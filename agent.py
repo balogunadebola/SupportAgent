@@ -1,12 +1,15 @@
 import os
 from dotenv import load_dotenv
 from pathlib import Path
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
 
 # Import Azure AI Foundry client libraries and custom user functions.
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
 from azure.ai.projects.models import FunctionTool, ToolSet
-from SupportAgent.user_functions import user_functions
+from user_functions import user_functions
 
 def main():
     """
