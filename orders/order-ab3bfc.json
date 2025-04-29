@@ -1,0 +1,15 @@
+{
+  "order_number": "ab3bfc",
+  "timestamp": "2025-04-29T13:37:11.140120",
+  "customer": {
+    "name": "Akorede",
+    "email": "akorede1@gmail.com"
+  },
+  "product": {
+    "model": "Lenovo IdeaPad 3",
+    "specs": "Intel i3, 8GB RAM, 256GB SSD",
+    "unit_price": 549.99,
+    "quantity": 1,
+    "total_price": 549.99
+  }
+}

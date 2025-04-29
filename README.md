@@ -1,2 +1,2 @@
 # SupportAgent
-This is a simple technical support agent that can collect details of a technical problem and generate a support ticket
+This is a simple AI Assistant that takes and processes computer/accessory orders and assists in raising a support ticket in the event of a technical problem with a product. 
