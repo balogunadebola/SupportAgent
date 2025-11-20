@@ -1,0 +1,9 @@
+Order ID: ORDER-27af95
+Status: Pending
+Created At: 2025-11-20T17:52:54.937718Z
+Summary: Alienware m17 (x1)
+
+Order Number: 27af95
+Customer: John William <johnwilliam1@gmail.com>
+Product: Alienware m17 (x1)
+Total: $1999.99

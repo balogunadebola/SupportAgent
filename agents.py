@@ -1,5 +1,4 @@
 # SupportAgent/agents.py
-
 import json
 import openai
 import logging
@@ -51,9 +50,12 @@ class OrchestratorAgent(BaseAgent):
 class SalesAgent(BaseAgent):
     def __init__(self, deployment):
         instr = (
-            "You are the sales agent. Gather category, model, name, email_address, quantity, "
-            "then call get_laptops_in_category, get_laptop_details, or process_sales_order. "
-            "If you cannot help, call route_to_agent(target:'support')."
+            "You are the sales agent. Handle ALL product and purchase inquiries. "
+            "Ask clarifying questions (category, model preference, budget) and then gather "
+            "name, email_address, product, quantity. Use get_laptops_in_category, "
+            "get_laptop_details, or process_sales_order to fulfill the request. "
+            "Only route to support via route_to_agent(target:'support') if the user explicitly asks for technical help. "
+            "Never tell the user you are transferring them; just proceed with sales assistance."
         )
         fn = [
             {
@@ -109,8 +111,11 @@ class SalesAgent(BaseAgent):
 class SupportAgent(BaseAgent):
     def __init__(self, deployment):
         instr = (
-            "You are the support agent. Gather email_address, order_number, description, "
-            "then call submit_support_ticket. If you cannot help, call route_to_agent(target:'sales')."
+            "You are the support agent. Handle all support and status inquiries. "
+            "Gather email_address, order_number, and a description, then call submit_support_ticket. "
+            "Provide status updates by acknowledging the ticket/order and asking for missing details. "
+            "Only route to sales via route_to_agent(target:'sales') if the user explicitly wants to buy something. "
+            'Do not say you are transferring; simply ask the needed support questions.'
         )
         fn = [
             {

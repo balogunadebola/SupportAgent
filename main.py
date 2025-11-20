@@ -1,5 +1,4 @@
 # SupportAgent/main.py
-
 import os
 import json
 import logging
@@ -29,7 +28,7 @@ def main():
     history = []
     current = orch
 
-    print("🛠️ System ready. Type 'quit' to exit.")
+    print("System ready. Type 'quit' to exit.")
     while True:
         user = input("You: ").strip()
         if user.lower() == "quit":
