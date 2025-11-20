@@ -1,0 +1,15 @@
+{
+  "order_number": "c2c5e8",
+  "timestamp": "2025-11-20T11:44:23.649765",
+  "customer": {
+    "name": "Adebola Balogun",
+    "email": "adebolabalogun112@gmail.com"
+  },
+  "product": {
+    "model": "Alienware m17",
+    "specs": "Intel i9, RTX 3080, 32GB RAM, 2TB SSD",
+    "unit_price": 1999.99,
+    "quantity": 1,
+    "total_price": 1999.99
+  }
+}

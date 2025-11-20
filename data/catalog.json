@@ -1,0 +1,44 @@
+{
+  "gaming": {
+    "ROG Strix G15": {
+      "price": 1499.99,
+      "specs": "AMD Ryzen 9, RTX 3070, 32GB RAM, 1TB SSD"
+    },
+    "Alienware m17": {
+      "price": 1999.99,
+      "specs": "Intel i9, RTX 3080, 32GB RAM, 2TB SSD"
+    },
+    "Razer Blade 15": {
+      "price": 1799.99,
+      "specs": "Intel i7, RTX 3070, 16GB RAM, 1TB SSD"
+    }
+  },
+  "business": {
+    "ThinkPad X1 Carbon": {
+      "price": 1399.99,
+      "specs": "Intel i7, 16GB RAM, 512GB SSD"
+    },
+    "Dell XPS 13": {
+      "price": 1299.99,
+      "specs": "Intel i5, 16GB RAM, 512GB SSD"
+    },
+    "HP Elite Dragonfly": {
+      "price": 1599.99,
+      "specs": "Intel i7, 32GB RAM, 1TB SSD"
+    }
+  },
+  "budget": {
+    "Acer Aspire 5": {
+      "price": 649.99,
+      "specs": "AMD Ryzen 5, 8GB RAM, 256GB SSD"
+    },
+    "Lenovo IdeaPad 3": {
+      "price": 549.99,
+      "specs": "Intel i3, 8GB RAM, 256GB SSD"
+    },
+    "HP Pavilion": {
+      "price": 699.99,
+      "specs": "AMD Ryzen 7, 16GB RAM, 512GB SSD"
+    }
+  }
+}

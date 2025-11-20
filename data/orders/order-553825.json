@@ -1,0 +1,15 @@
+{
+  "order_number": "553825",
+  "timestamp": "2025-11-20T11:25:52.404306",
+  "customer": {
+    "name": "Test User",
+    "email": "test@example.com"
+  },
+  "product": {
+    "model": "Dell XPS 13",
+    "specs": "Intel i5, 16GB RAM, 512GB SSD",
+    "unit_price": 1299.99,
+    "quantity": 1,
+    "total_price": 1299.99
+  }
+}
