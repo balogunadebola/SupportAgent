@@ -1,39 +1,47 @@
 # SupportAgent
 
-SupportAgent is an AI assistant that routes between sales and support. It now exposes:
-- A FastAPI backend (`api.py`) with chat, tickets, and orders endpoints.
-- A Streamlit frontend (`web_app.py`) that calls the API.
-- A CLI entry point (`main.py`) from the original version.
+SupportAgent is a laptop sales/support assistant with three entry points:
+- `api.py`: FastAPI backend exposing `/chat`, `/tickets`, `/orders`.
+- `web_app.py`: Streamlit client for chat + ticket/order views.
+- `main.py`: CLI chat mode.
 
-### Running the backend
+## Quick start
+
 ```bash
+python -m venv venv
+venv\Scripts\activate  # or source venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
+```
+
+Create `.env` with your Azure OpenAI settings:
+```
+AZURE_OPENAI_ENDPOINT=...
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_DEPLOYMENT_NAME=your-model-name
+```
+
+### Backend
+```bash
 uvicorn api:app --reload --port 8000
 ```
 
-Place your Azure OpenAI credentials in `.env` using the same keys as the CLI (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT_NAME`).
-
-### Running the frontend
+### Frontend
 ```bash
 streamlit run web_app.py
 ```
-If the API is not on `http://localhost:8000`, set `support_api_url` in `.streamlit/secrets.toml`.
+If the API isn’t running on `http://localhost:8000`, set `support_api_url` in `.streamlit/secrets.toml`.
 
-### Data locations and format
-- Orders are stored under `data/orders/`
-- Tickets are stored under `data/tickets/`
-
-Ticket files include:
-```
-Ticket ID: TICKET-123
-Status: Open
-Created At: 2025-11-20T10:23:00Z
-Summary: Short issue summary
-
-<free-form content>
+### CLI
+```bash
+python main.py
 ```
 
-Order files include:
+## Data layout
+- Orders: `data/orders/ORDER-xxxx.(txt|json)`
+- Tickets: `data/tickets/TICKET-xxxx.txt`
+
+Files follow this shape:
 ```
 Order ID: ORDER-123
 Status: Pending
@@ -42,4 +50,5 @@ Summary: Laptop X with 16GB RAM and 512GB SSD
 
 <full order details>
 ```
-Legacy files without `Status` or `Created At` default to `Status: Open/Pending` and the timestamp inferred from file metadata.
+
+Legacy files lacking `Status` or `Created At` default to `Status: Open/Pending` and infer timestamps from file metadata.

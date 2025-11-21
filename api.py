@@ -3,7 +3,7 @@ import logging
 import time
 from collections import defaultdict, deque
 from dataclasses import asdict
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
