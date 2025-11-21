@@ -31,6 +31,9 @@ def _ensure_session():
 
 def render_chat():
     st.header("Chat with SupportAgent")
+    if not st.session_state.history:
+        with st.chat_message("assistant"):
+            st.markdown("Hi! I can help with laptop purchases or support. What do you need?")
     history: List[Dict[str, str]] = st.session_state.history
     display_history = [m for m in history if m.get("role") in {"user", "assistant"}]
     for msg in display_history:
@@ -61,7 +64,6 @@ def render_chat():
         st.session_state.history = updated_history
         with st.chat_message("assistant"):
             st.markdown(reply)
-        st.caption(f"Latency: {data.get('latency_ms', 0):.0f} ms")
 
 
 def render_tickets():

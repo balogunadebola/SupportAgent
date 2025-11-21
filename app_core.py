@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from copy import deepcopy
 from pathlib import Path
@@ -14,8 +15,10 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
-from agents import OrchestratorAgent, SalesAgent, SupportAgent
+from agents import ConversationAgent, OrchestratorAgent, SalesAgent, SupportAgent
+from services.tool_executor import tool_executor
 from user_functions import user_functions
+from utils.session_manager import session_manager
 
 
 class SupportAssistantCore:
@@ -29,12 +32,11 @@ class SupportAssistantCore:
         self.logger = logging.getLogger("support_core")
         self.max_history_tokens = int(self.config.get("max_history_tokens", 4000))
         self._configure_openai()
-        deployment = self.config.get("deployment_name") or os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "")
-
-        # Initialize agents and tool map
-        self.orchestrator = OrchestratorAgent(deployment)
-        self.sales = SalesAgent(deployment)
-        self.support = SupportAgent(deployment)
+        # Initialize agents (deployment handled by llm_service)
+        self.orchestrator = OrchestratorAgent()
+        self.sales = SalesAgent()
+        self.support = SupportAgent()
+        self.conversation = ConversationAgent()
         self.tools = {fn.__name__: fn for fn in user_functions}
 
     def _configure_openai(self) -> None:
@@ -53,9 +55,9 @@ class SupportAssistantCore:
 
     async def _call_agent(self, agent: Any, messages: List[Dict[str, str]]) -> Any:
         """
-        Call an agent's chat method in a worker thread to keep FastAPI event loop non-blocking.
+        Call an agent's async chat method.
         """
-        return await asyncio.to_thread(agent.chat, messages)
+        return await agent.chat_async(messages)
 
     @staticmethod
     def _safe_json_loads(payload: Optional[str]) -> Dict[str, Any]:
@@ -72,28 +74,56 @@ class SupportAssistantCore:
         Heuristic fallback routing when orchestrator fails to call a tool.
         """
         text = (user_message or "").lower()
-        support_terms = ("support", "issue", "ticket", "problem", "status", "help", "bug")
+        support_terms = ("support", "issue", "ticket", "problem", "status", "help", "bug", "broken", "warranty")
+        sales_terms = ("buy", "purchase", "price", "order", "quote", "spec", "laptop", "catalog", "deal")
         if any(t in text for t in support_terms):
             return "support"
-        return "sales"
+        if any(t in text for t in sales_terms):
+            return "sales"
+        return "conversation"
 
-    def build_context(self, history: List[Dict[str, str]], max_tokens: int) -> List[Dict[str, str]]:
+    def build_context(
+        self,
+        history: List[Dict[str, str]],
+        max_tokens: int,
+        summary: Optional[str] = None,
+        slot_snapshot: Optional[str] = None,
+    ) -> List[Dict[str, str]]:
         """
         Truncate conversation history to stay under a rough token budget.
         We approximate tokens with characters (4 chars ~= 1 token) for simplicity.
+        Injects summary and known slots as system messages when available.
         """
         if not history:
-            return []
-        budget_chars = max_tokens * 4
-        total = 0
-        trimmed: List[Dict[str, str]] = []
-        for msg in reversed(history):
-            content = msg.get("content") or ""
-            total += len(content)
-            trimmed.append(msg)
-            if total >= budget_chars:
-                break
-        return list(reversed(trimmed))
+            trimmed: List[Dict[str, str]] = []
+        else:
+            budget_chars = max_tokens * 4
+            total = 0
+            trimmed = []
+            for msg in reversed(history):
+                content = msg.get("content") or ""
+                total += len(content)
+                trimmed.append(msg)
+                if total >= budget_chars:
+                    break
+            trimmed = list(reversed(trimmed))
+
+        prefix: List[Dict[str, str]] = []
+        if slot_snapshot:
+            prefix.append({"role": "system", "content": f"Known details: {slot_snapshot}"})
+        if slot_snapshot and "budget_status=below_catalog" in slot_snapshot:
+            prefix.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "User budget is below current catalog pricing. "
+                        "Acknowledge this before suggesting the closest matches."
+                    ),
+                }
+            )
+        if summary:
+            prefix.append({"role": "system", "content": f"Earlier conversation summary: {summary}"})
+        return prefix + trimmed
 
     def _fallback_reply(self, reason: str) -> str:
         self.logger.warning("Fallback reply triggered: %s", reason)
@@ -101,6 +131,50 @@ class SupportAssistantCore:
             "I'm having trouble completing that request right now. "
             "Please try again in a moment or share a bit more detail so I can help."
         )
+
+    def _select_agent(self, target: str):
+        if target == "sales":
+            return self.sales
+        if target == "support":
+            return self.support
+        return self.conversation
+
+    def _update_slots(self, state, user_message: str):
+        text = user_message or ""
+        text_lower = text.lower()
+        email_match = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
+        if email_match:
+            state.update_slot("email", email_match.group(0).lower())
+
+        order_match = re.search(r"ORDER-[A-Za-z0-9]+", text.upper())
+        if order_match:
+            state.update_slot("order_id", order_match.group(0))
+
+        ticket_match = re.search(r"TICKET-[A-Za-z0-9]+", text.upper())
+        if ticket_match:
+            state.update_slot("ticket_id", ticket_match.group(0))
+
+        if "gaming" in text_lower:
+            state.update_slot("category", "gaming")
+        elif "business" in text_lower:
+            state.update_slot("category", "business")
+        elif "budget" in text_lower and "model" not in state.slots:
+            state.update_slot("category", "budget")
+
+        budget_match = re.search(r"\$?\s?(\d{3,5})", text)
+        if budget_match and "budget" in text_lower:
+            budget_value = budget_match.group(1)
+            state.update_slot("budget", budget_value)
+            try:
+                budget_int = int(budget_value)
+            except ValueError:
+                budget_int = None
+            if budget_int and budget_int < 1200:
+                state.update_slot("budget_status", "below_catalog")
+
+        quantity_match = re.search(r"\b(\d+)\b", text)
+        if quantity_match and "quantity" not in state.slots and ("quantity" in text_lower or "units" in text_lower):
+            state.update_slot("quantity", quantity_match.group(1))
 
     async def handle_user_message(
         self,
@@ -113,16 +187,27 @@ class SupportAssistantCore:
         Returns a structured dict with reply, updated history, tool metadata, and latency.
         """
         start_time = time.perf_counter()
-        history = deepcopy(conversation_history or [])
+        # Pull existing history for the session if not provided
+        state = session_manager.get(session_id)
+        history = deepcopy(conversation_history or state.history)
         history.append({"role": "user", "content": user_message})
-        history = self.build_context(history, self.max_history_tokens)
+        state.history = history
+        state.rollup_history()
+        self._update_slots(state, user_message)
+        history = state.history
+        llm_history = self.build_context(
+            history,
+            self.max_history_tokens,
+            summary=state.summary,
+            slot_snapshot=state.slot_snapshot(),
+        )
 
         fallback_used = False
         tool_calls: List[Dict[str, Any]] = []
         used_agent = "orchestrator"
 
         try:
-            orch_msg = await self._call_agent(self.orchestrator, history)
+            orch_msg = await self._call_agent(self.orchestrator, llm_history)
         except Exception as exc:  # openai errors and routing failures
             self.logger.exception("Orchestrator failed for session %s", session_id)
             return {
@@ -140,17 +225,34 @@ class SupportAssistantCore:
             target = args.get("target")
             content = json.dumps(args) if args else "{}"
             history.append({"role": "function", "name": "route_to_agent", "content": content})
+        else:
+            target = None
 
         if not target:
-            # Orchestrator failed; route heuristically without surfacing its message to the user.
             target = self._guess_route(user_message)
             fallback_used = True
+            history.append({
+                "role": "function",
+                "name": "route_to_agent",
+                "content": json.dumps({"target": target, "auto_routed": True})
+            })
 
-        agent = self.sales if target == "sales" else self.support
+        # Rebuild context after routing decision is recorded
+        state.history = history
+        state.rollup_history()
+        history = state.history
+        llm_history = self.build_context(
+            history,
+            self.max_history_tokens,
+            summary=state.summary,
+            slot_snapshot=state.slot_snapshot(),
+        )
+
+        agent = self._select_agent(target)
         used_agent = agent.name
 
         try:
-            agent_msg = await self._call_agent(agent, history)
+            agent_msg = await self._call_agent(agent, llm_history)
         except Exception:
             self.logger.exception("Agent call failed for %s", used_agent)
             fallback_used = True
@@ -169,35 +271,33 @@ class SupportAssistantCore:
         if getattr(agent_msg, "function_call", None):
             fname = agent_msg.function_call.name
             fargs = self._safe_json_loads(agent_msg.function_call.arguments)
-            tool_fn = self.tools.get(fname)
+            exec_result = await tool_executor.execute(fname, fargs)
+            tool_calls.append({"name": fname, "args": fargs, "result": exec_result})
 
-            if not tool_fn:
+            # Persist tool output to history for LLM context
+            history.append({
+                "role": "function",
+                "name": fname,
+                "content": json.dumps(exec_result),
+            })
+
+            if not exec_result.get("success"):
                 fallback_used = True
-                reply = self._fallback_reply("unknown_tool")
-                history.append({"role": "assistant", "content": reply})
+                reply = exec_result.get("error") or self._fallback_reply("tool_error")
             else:
-                try:
-                    result = await asyncio.to_thread(tool_fn, **fargs)
-                except Exception:
-                    self.logger.exception("Tool %s failed for session %s", fname, session_id)
-                    fallback_used = True
-                    reply = self._fallback_reply("tool_error")
-                else:
-                    tool_calls.append({"name": fname, "args": fargs, "result": result})
-                    history.append({"role": "function", "name": fname, "content": result})
-                    try:
-                        parsed = json.loads(result)
-                        reply = parsed.get("user_reply") or parsed.get("message") or "Request completed."
-                    except Exception:
-                        reply = "Your request was processed."
-                history.append({"role": "assistant", "content": reply})
+                parsed = exec_result.get("result") or {}
+                reply = parsed.get("user_reply") or parsed.get("message") or "Request completed."
+            history.append({"role": "assistant", "content": reply})
         else:
             reply = agent_msg.content or self._fallback_reply("empty_agent_message")
             fallback_used = fallback_used or not agent_msg.content
             history.append({"role": "assistant", "content": reply})
 
         latency_ms = (time.perf_counter() - start_time) * 1000
-        return {
+        state.history = history
+        state.rollup_history()
+        history = state.history
+        result = {
             "reply": reply,
             "updated_history": history,
             "used_agent": used_agent,
@@ -205,3 +305,12 @@ class SupportAssistantCore:
             "latency_ms": latency_ms,
             "fallback_used": fallback_used,
         }
+        # Persist updated state
+        session_manager.upsert_history(
+            session_id,
+            state.history,
+            summary=state.summary,
+            slots=state.slots,
+            last_agent=used_agent,
+        )
+        return result

@@ -128,8 +128,8 @@ def process_sales_order(name: str, email_address: str, product: str, quantity: i
     # craft your user_reply
     return json.dumps({
         "user_reply": (
-            f"Your order {order_number} has been placed! "
-            f"I've saved your summary as {txt_name}."
+            f"Your order ORDER-{order_number} has been placed! "
+            f"We'll email {email_address} with details and tracking next."
         ),
         **{k: result[k] for k in ("order_number", "total_price")}
     })
@@ -161,19 +161,12 @@ def submit_support_ticket(email_address: str, order_number: str, description: st
 
     return to_json({
         "ticket_id": ticket_id,
-        "user_reply": f"Support ticket {ticket_id} created. We'll provide you with an update on that email address."
+        "user_reply": (
+            f"Support ticket {ticket_id} created. "
+            f"We'll email updates to {email_address}. "
+            f"If you have more details, reply with them and I'll add them to the ticket."
+        )
     })
-
-
-# export for main.py
-user_functions: Set[Callable[..., Any]] = {
-    route_to_agent,
-    get_laptop_categories,
-    get_laptops_in_category,
-    get_laptop_details,
-    process_sales_order,
-    submit_support_ticket
-}
 
 
 def _safe_read_text(path: Path) -> str:
@@ -373,3 +366,77 @@ def update_order_status(order_id: str, new_status: str) -> bool:
         details.content or ""
     ]
     return _atomic_write(path, "\n".join(updated_lines).strip() + "\n")
+
+
+def _status_payload(
+    entity_id: str,
+    status: str,
+    summary: str,
+    created_at: Optional[str],
+    label: str,
+) -> str:
+    return to_json({
+        f"{label}_id": entity_id,
+        "status": status,
+        "summary": summary,
+        "created_at": created_at,
+        "user_reply": f"{label.title()} {entity_id} is currently '{status}'. Summary: {summary}",
+    })
+
+
+def get_order_status(order_id: str) -> str:
+    details = get_order(order_id)
+    if not details:
+        return to_json({
+            "error": "Order not found",
+            "user_reply": f"I couldn't find order {order_id}. Please double-check the ID.",
+        })
+    return _status_payload(details.order_id, details.status, details.summary, details.created_at, "order")
+
+
+def get_ticket_status(ticket_id: str) -> str:
+    details = get_ticket(ticket_id)
+    if not details:
+        return to_json({
+            "error": "Ticket not found",
+            "user_reply": f"I couldn't find ticket {ticket_id}. Please double-check the ID.",
+        })
+    return _status_payload(details.ticket_id, details.status, details.summary, details.created_at, "ticket")
+
+
+# export for main.py
+user_functions: Set[Callable[..., Any]] = {
+    route_to_agent,
+    get_laptop_categories,
+    get_laptops_in_category,
+    get_laptop_details,
+    process_sales_order,
+    submit_support_ticket,
+    get_ticket_status,
+    get_order_status,
+}
+# User-facing helpers for quick status checks
+def get_order_status(order_id: str) -> str:
+    details = get_order(order_id)
+    if not details:
+        return to_json({"error": "Order not found", "user_reply": f"I couldn't find order {order_id}. Please check the ID."})
+    return to_json({
+        "order_id": details.order_id,
+        "status": details.status,
+        "summary": details.summary,
+        "created_at": details.created_at,
+        "user_reply": f"Order {details.order_id} is currently '{details.status}'. Summary: {details.summary}"
+    })
+
+
+def get_ticket_status(ticket_id: str) -> str:
+    details = get_ticket(ticket_id)
+    if not details:
+        return to_json({"error": "Ticket not found", "user_reply": f"I couldn't find ticket {ticket_id}. Please check the ID."})
+    return to_json({
+        "ticket_id": details.ticket_id,
+        "status": details.status,
+        "summary": details.summary,
+        "created_at": details.created_at,
+        "user_reply": f"Ticket {details.ticket_id} is currently '{details.status}'. Summary: {details.summary}"
+    })

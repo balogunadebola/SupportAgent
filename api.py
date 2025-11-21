@@ -3,19 +3,35 @@ import logging
 import time
 from collections import defaultdict, deque
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 
 from app_core import SupportAssistantCore
+from config import settings
+from models import (
+    ChatRequest,
+    ChatResponse,
+    OrderDetailsModel,
+    OrderDetailsResponse,
+    OrderMetaModel,
+    OrderStatusUpdateRequest,
+    OrderStatusUpdateResponse,
+    OrdersListResponse,
+    TicketDetailsModel,
+    TicketDetailsResponse,
+    TicketMetaModel,
+    TicketStatusUpdateRequest,
+    TicketStatusUpdateResponse,
+    TicketsListResponse,
+)
 from user_functions import (
-    TicketDetails,
-    TicketMeta,
     OrderDetails,
     OrderMeta,
+    TicketDetails,
+    TicketMeta,
     get_order,
     get_ticket,
     list_orders,
@@ -23,6 +39,7 @@ from user_functions import (
     update_order_status,
     update_ticket_status,
 )
+from utils.session_manager import session_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,82 +81,10 @@ class RateLimiter:
             return True
 
 
-rate_limiter = RateLimiter(max_calls=5, window_seconds=10)
-
-
-class ChatRequest(BaseModel):
-    session_id: str
-    message: str
-    history: List[Dict[str, str]] = Field(default_factory=list)
-
-
-class ChatResponse(BaseModel):
-    reply: str
-    updated_history: List[Dict[str, str]]
-    used_agent: str
-    tool_calls: Optional[List[Dict[str, Any]]] = None
-    latency_ms: float
-    fallback_used: bool
-
-
-class TicketMetaModel(BaseModel):
-    ticket_id: str
-    status: str
-    created_at: Optional[str]
-    summary: str
-
-
-class TicketDetailsModel(TicketMetaModel):
-    content: str
-
-
-class TicketsListResponse(BaseModel):
-    tickets: List[TicketMetaModel]
-
-
-class TicketDetailsResponse(BaseModel):
-    ticket: TicketDetailsModel
-
-
-class TicketStatusUpdateRequest(BaseModel):
-    status: str
-
-
-class TicketStatusUpdateResponse(BaseModel):
-    success: bool
-    ticket_id: str
-    new_status: str
-    message: str
-
-
-class OrderMetaModel(BaseModel):
-    order_id: str
-    status: str
-    created_at: Optional[str]
-    summary: str
-
-
-class OrderDetailsModel(OrderMetaModel):
-    content: str
-
-
-class OrdersListResponse(BaseModel):
-    orders: List[OrderMetaModel]
-
-
-class OrderDetailsResponse(BaseModel):
-    order: OrderDetailsModel
-
-
-class OrderStatusUpdateRequest(BaseModel):
-    status: str
-
-
-class OrderStatusUpdateResponse(BaseModel):
-    success: bool
-    order_id: str
-    new_status: str
-    message: str
+rate_limiter = RateLimiter(
+    max_calls=settings.rate_limit_requests,
+    window_seconds=settings.rate_limit_window_seconds,
+)
 
 
 @app.middleware("http")
